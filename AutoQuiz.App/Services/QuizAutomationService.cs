@@ -206,7 +206,6 @@ public class QuizAutomationService
     {
         var result = new QuizResult();
         var questionNumber = 0;
-        var visitedUrls = new HashSet<string>();
         var sameUrlCounter = 0;
         var maxSameUrlAttempts = 3;
         var maxIterations = 100; // Prevent infinite loops

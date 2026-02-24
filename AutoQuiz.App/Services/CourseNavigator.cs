@@ -221,23 +221,17 @@ public class CourseNavigator
         }
 
         // Normalize whitespace for comparison
-        var normalizedTitle = System.Text.RegularExpressions.Regex.Replace(courseTitle.Trim(), @"\s+", " ");
+        var normalizedTitle = Regex.Replace(courseTitle.Trim(), @"\s+", " ");
 
         foreach (var allowedTitle in AllowedCourseTitles)
         {
-            var normalizedAllowed = System.Text.RegularExpressions.Regex.Replace(allowedTitle, @"\s+", " ");
+            var normalizedAllowed = Regex.Replace(allowedTitle, @"\s+", " ");
             
             // Check if the course title starts with the allowed pattern (for variations like "FORMAZIONE IN MATERIA DI D.LGS. 231/2001")
+            // Note: StartsWith also handles exact matches (a string always starts with itself)
             if (normalizedTitle.StartsWith(normalizedAllowed, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogDebug("Course title '{Title}' matches allowed pattern '{Pattern}'", courseTitle, allowedTitle);
-                return true;
-            }
-            
-            // Also check exact match with flexible whitespace
-            if (normalizedTitle.Equals(normalizedAllowed, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogDebug("Course title '{Title}' exactly matches allowed title '{Pattern}'", courseTitle, allowedTitle);
                 return true;
             }
         }
