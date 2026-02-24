@@ -7,6 +7,7 @@ namespace AutoQuiz.App.Services;
 public class CourseNavigator
 {
     private readonly ILogger<CourseNavigator> _logger;
+    private static readonly Regex PercentageRegex = new Regex(@"(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled);
 
     public CourseNavigator(ILogger<CourseNavigator> logger)
     {
@@ -174,28 +175,43 @@ public class CourseNavigator
 
         // Check for 100% completion in various formats
         // Match patterns like: "100%", "100 %", "100.0%", etc.
-        var percentageRegex = new Regex(@"(\d+(?:\.\d+)?)\s*%");
-        var matches = percentageRegex.Matches(text);
+        var matches = PercentageRegex.Matches(text);
+        
+        bool foundPercentage = false;
+        bool hasHundredPercent = false;
         
         foreach (Match match in matches)
         {
             if (double.TryParse(match.Groups[1].Value, out double percentage))
             {
-                // Only consider 100% as complete, anything less is incomplete
+                foundPercentage = true;
+                
+                // Check if we found 100% completion
                 if (percentage >= 100.0)
                 {
-                    _logger.LogDebug("Course is complete: found {Percentage}%", percentage);
-                    return true;
-                }
-                else
-                {
-                    _logger.LogDebug("Course is incomplete: found {Percentage}%", percentage);
-                    return false;
+                    hasHundredPercent = true;
+                    _logger.LogDebug("Found 100% completion indicator");
                 }
             }
         }
+        
+        // If we found any percentage values, use that to determine completion
+        // Only 100% indicates completion, anything else is incomplete
+        if (foundPercentage)
+        {
+            if (hasHundredPercent)
+            {
+                _logger.LogDebug("Course is complete: found 100%");
+                return true;
+            }
+            else
+            {
+                _logger.LogDebug("Course is incomplete: found percentage < 100%");
+                return false;
+            }
+        }
 
-        // Check for completion keywords in multiple languages
+        // If no percentage found, check for completion keywords in multiple languages
         var completionKeywords = new[]
         {
             "completed",    // English
@@ -217,7 +233,6 @@ public class CourseNavigator
             }
         }
 
-        // If we found a percentage that's not 100%, treat as incomplete
         // If no percentage or completion keyword found, assume incomplete (to be safe and process it)
         return false;
     }
