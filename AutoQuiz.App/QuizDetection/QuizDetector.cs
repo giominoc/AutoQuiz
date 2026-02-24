@@ -29,7 +29,19 @@ public class QuizDetector
                 "[data-test='quiz']",
                 "form[data-purpose='assessment']",
                 "[role='group']:has(input[type='radio'])",
-                "[class*='question']"
+                "[class*='question']",
+                
+                // SCORM quiz selectors
+                "[class*='quiz']",
+                "[id*='quiz']",
+                "[class*='assessment']",
+                "[id*='assessment']",
+                
+                // Italian quiz selectors
+                "[class*='domanda']",
+                "[id*='domanda']",
+                "[class*='risposta']",
+                "[id*='risposta']"
             };
 
             foreach (var selector in quizSelectors)
@@ -42,15 +54,28 @@ public class QuizDetector
                 }
             }
 
-            // Check for text indicators
+            // Check for text indicators in multiple languages
             var textContent = await page.TextContentAsync("body");
-            var quizKeywords = new[] { "question", "quiz", "test", "assessment", "select the correct" };
             
-            if (textContent != null && quizKeywords.Any(keyword => 
-                textContent.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+            if (textContent != null)
             {
-                _logger.LogInformation("Quiz detected by text content");
-                return true;
+                var quizKeywords = new[] 
+                { 
+                    // English
+                    "question", "quiz", "test", "assessment", "select the correct",
+                    
+                    // Italian
+                    "domanda", "domande", "risposta", "risposte", "quiz", "test",
+                    "seleziona", "scegli", "quale", "cosa", "come", "perché",
+                    "domande finali"
+                };
+                
+                if (quizKeywords.Any(keyword => 
+                    textContent.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogInformation("Quiz detected by text content");
+                    return true;
+                }
             }
 
             return false;

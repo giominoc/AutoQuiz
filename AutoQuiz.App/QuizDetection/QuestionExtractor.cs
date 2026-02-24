@@ -28,7 +28,16 @@ public class QuestionExtractor
                 ".question-text",
                 "[class*='question']",
                 "h2:has-text('Question')",
-                "p:has-text('?')"
+                "h2:has-text('Domanda')",
+                "h3:has-text('Question')",
+                "h3:has-text('Domanda')",
+                "p:has-text('?')",
+                
+                // SCORM specific
+                "[class*='quiz-question']",
+                "[id*='question']",
+                "[class*='domanda']",
+                ".scorm-question"
             };
 
             string questionText = string.Empty;
@@ -81,14 +90,53 @@ public class QuestionExtractor
             else
             {
                 _logger.LogWarning("Could not extract complete question data");
+                
+                // Capture diagnostic artifacts
+                await CaptureDiagnosticsAsync(page, questionText, answers);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error extracting questions");
+            
+            // Capture diagnostics on exception
+            try
+            {
+                await CaptureDiagnosticsAsync(page, string.Empty, new List<string>());
+            }
+            catch { /* Ignore diagnostic errors */ }
         }
 
         return questions;
+    }
+
+    private async Task CaptureDiagnosticsAsync(IPage page, string questionText, List<string> answers)
+    {
+        try
+        {
+            _logger.LogInformation("Capturing diagnostic artifacts for failed extraction...");
+            
+            // Capture screenshot
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var screenshotPath = Path.Combine("Logs", "Screenshots", $"diagnostic_{timestamp}.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(screenshotPath)!);
+            await page.ScreenshotAsync(new() { Path = screenshotPath, FullPage = true });
+            _logger.LogInformation("Diagnostic screenshot saved: {Path}", screenshotPath);
+
+            // Dump relevant HTML
+            var bodyHtml = await page.InnerHTMLAsync("body");
+            var htmlPath = Path.Combine("Logs", $"diagnostic_{timestamp}.html");
+            await File.WriteAllTextAsync(htmlPath, bodyHtml);
+            _logger.LogInformation("HTML dump saved: {Path}", htmlPath);
+            
+            _logger.LogInformation("Diagnostic info - Question text: '{Text}', Answers found: {Count}", 
+                string.IsNullOrWhiteSpace(questionText) ? "(none)" : questionText.Substring(0, Math.Min(100, questionText.Length)), 
+                answers.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error capturing diagnostics");
+        }
     }
 
     private async Task<List<string>> ExtractAnswersAsync(IPage page)
@@ -104,7 +152,20 @@ public class QuestionExtractor
                 "input[type='checkbox'] + label",
                 "[data-purpose='answer-label']",
                 ".answer-text",
-                "[class*='answer']"
+                "[class*='answer']",
+                
+                // SCORM specific selectors
+                "[role='radio']",
+                "[role='checkbox']",
+                "[class*='choice']",
+                "[class*='option']",
+                "li[class*='answer']",
+                "div[class*='answer']",
+                "button[class*='answer']",
+                
+                // Italian specific
+                "[class*='risposta']",
+                "li[class*='risposta']"
             };
 
             foreach (var selector in answerSelectors)
@@ -122,11 +183,38 @@ public class QuestionExtractor
                     }
 
                     if (answers.Any())
+                    {
+                        _logger.LogInformation("Found {Count} answers using selector: {Selector}", answers.Count, selector);
                         break;
+                    }
                 }
             }
 
-            // If no answers found, try to get all labels
+            // If no answers found, try to get clickable list items
+            if (!answers.Any())
+            {
+                var listItems = await page.QuerySelectorAllAsync("ul li, ol li");
+                foreach (var item in listItems)
+                {
+                    var text = await item.TextContentAsync();
+                    if (!string.IsNullOrWhiteSpace(text) && text.Length < 500)
+                    {
+                        // Check if the item looks like an answer option
+                        var trimmedText = text.Trim();
+                        if (trimmedText.Length > 0 && !trimmedText.Contains('\n'))
+                        {
+                            answers.Add(trimmedText);
+                        }
+                    }
+                }
+                
+                if (answers.Any())
+                {
+                    _logger.LogInformation("Found {Count} answers from list items", answers.Count);
+                }
+            }
+
+            // If still no answers found, try all labels as last resort
             if (!answers.Any())
             {
                 var labels = await page.QuerySelectorAllAsync("label");
@@ -137,6 +225,11 @@ public class QuestionExtractor
                     {
                         answers.Add(text.Trim());
                     }
+                }
+                
+                if (answers.Any())
+                {
+                    _logger.LogInformation("Found {Count} answers from labels", answers.Count);
                 }
             }
         }

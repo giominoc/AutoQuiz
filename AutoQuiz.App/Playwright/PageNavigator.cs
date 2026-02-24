@@ -39,23 +39,64 @@ public class PageNavigator
         {
             var nextButtons = new[]
             {
+                // English
                 "button:has-text('Next')",
+                "button:has-text('Continue')",
+                "a:has-text('Next')",
+                "a:has-text('Continue')",
+                
+                // Italian
+                "button:has-text('Avanti')",
+                "a:has-text('Avanti')",
+                "button:has-text('Continua')",
+                "a:has-text('Continua')",
+                "button:has-text('Successivo')",
+                "a:has-text('Successivo')",
+                "button:has-text('Prosegui')",
+                "a:has-text('Prosegui')",
+                
+                // SCORM navigation
+                "[class*='next']",
+                "[id*='next']",
+                "[class*='forward']",
+                "[id*='forward']",
+                "button[title*='Next']",
+                "button[title*='Avanti']",
+                "[aria-label*='Next']",
+                "[aria-label*='Avanti']",
+                
+                // Generic
                 "[data-purpose='next-button']",
                 ".next-button",
-                "button:has-text('Continue')",
-                "a:has-text('Next')"
+                ".btn-next"
             };
 
             foreach (var button in nextButtons)
             {
                 var nextButton = await page.QuerySelectorAsync(button);
-                if (nextButton != null)
+                if (nextButton != null && await nextButton.IsVisibleAsync())
                 {
                     await nextButton.ClickAsync();
                     _logger.LogInformation("Clicked next button: {Button}", button);
-                    await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+                    await Task.Delay(1000);
+                    try
+                    {
+                        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new() { Timeout = 5000 });
+                    }
+                    catch (TimeoutException)
+                    {
+                        // Some SCORM pages don't trigger network events, continue anyway
+                        _logger.LogDebug("NetworkIdle timeout after clicking next, continuing...");
+                    }
                     return true;
                 }
+            }
+
+            // Fallback: Try SCORM menu navigation
+            var menuNavSuccess = await TryScormMenuNavigationAsync(page);
+            if (menuNavSuccess)
+            {
+                return true;
             }
 
             _logger.LogInformation("No next button found");
@@ -64,6 +105,66 @@ public class PageNavigator
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error clicking next button");
+            return false;
+        }
+    }
+
+    private async Task<bool> TryScormMenuNavigationAsync(IPage page)
+    {
+        _logger.LogInformation("Attempting SCORM menu navigation...");
+
+        try
+        {
+            // Look for SCORM menu items
+            var menuSelectors = new[]
+            {
+                "[class*='menu'] [class*='item']",
+                "[class*='nav'] [class*='item']",
+                "[role='menuitem']",
+                "ul li a",
+                ".course-menu li",
+                ".lesson-list li"
+            };
+
+            foreach (var selector in menuSelectors)
+            {
+                var menuItems = await page.QuerySelectorAllAsync(selector);
+                
+                if (menuItems.Count > 0)
+                {
+                    _logger.LogInformation("Found {Count} menu items with selector: {Selector}", menuItems.Count, selector);
+
+                    // Find the first unlocked/available item that's not completed
+                    foreach (var item in menuItems)
+                    {
+                        var classes = await item.GetAttributeAsync("class") ?? "";
+                        var text = await item.TextContentAsync() ?? "";
+                        
+                        // Check if item is available (not locked/disabled and not completed)
+                        var isLocked = classes.Contains("locked", StringComparison.OrdinalIgnoreCase) ||
+                                      classes.Contains("disabled", StringComparison.OrdinalIgnoreCase);
+                        
+                        var isCompleted = classes.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
+                                         classes.Contains("completato", StringComparison.OrdinalIgnoreCase) ||
+                                         text.Contains("✓") ||
+                                         text.Contains("✔");
+
+                        if (!isLocked && !isCompleted && await item.IsVisibleAsync())
+                        {
+                            _logger.LogInformation("Clicking next menu item: {Text}", text.Trim());
+                            await item.ClickAsync();
+                            await Task.Delay(2000);
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error in SCORM menu navigation");
             return false;
         }
     }
