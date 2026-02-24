@@ -132,8 +132,18 @@ public class ConsoleUI
 
     public static void WaitForExit()
     {
-        Console.WriteLine();
-        Console.WriteLine("Press any key to exit...");
-        Console.ReadKey();
+        try
+        {
+            Console.WriteLine();
+            Console.WriteLine("Press any key to exit...");
+            if (!Console.IsInputRedirected)
+            {
+                Console.ReadKey();
+            }
+        }
+        catch
+        {
+            // Ignore errors in non-interactive environments
+        }
     }
 }
