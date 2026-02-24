@@ -4,6 +4,8 @@ AutoQuiz is a C# desktop application that automates the completion of quiz tests
 
 ## Features
 
+- 🔐 **Automatic Login**: Detects and fills login forms automatically
+- 📚 **Multi-Course Support**: Detects and processes multiple incomplete courses
 - 🎯 **Automated Quiz Solving**: Automatically detects and solves quiz questions in video courses
 - 🎬 **Video Skipping**: Automatically skips or fast-forwards through video content
 - 🤖 **AI-Powered**: Uses GitHub Copilot CLI to determine correct answers
@@ -80,7 +82,9 @@ AutoQuiz.App/
    ```
 
 2. **Follow the prompts:**
-   - Enter the course URL
+   - Enter the course URL (or landing page URL)
+   - Enter your username for the platform
+   - Enter your password (will be masked with asterisks)
    - Select browser mode (Headless or Headed)
    - Configure maximum retries (default: 3)
    - Confirm to start automation
@@ -94,21 +98,26 @@ AutoQuiz.App/
 ## How It Works
 
 1. **Browser Initialization**: Launches a Playwright browser session
-2. **Navigation**: Navigates to the provided course URL
-3. **Video Skipping**: Detects and skips video content automatically
-4. **Quiz Detection**: Monitors the page for quiz questions
-5. **Question Extraction**: Extracts question text and answer options
-6. **AI Analysis**: Sends the question to GitHub Copilot CLI
-7. **Spec Generation**: Generates a Playwright test to select the correct answer
-8. **Execution**: Runs the generated test to submit the answer
-9. **Retry Logic**: If score is not 100%, restarts and retries with improved prompts
-10. **Results**: Reports final score and completion status
+2. **Login**: Automatically detects and fills login forms with provided credentials
+3. **Course Detection**: Scans for incomplete courses on the landing page
+4. **Course Iteration**: Processes each incomplete course one at a time
+5. **Navigation**: Navigates through course content
+6. **Video Skipping**: Detects and skips video content automatically
+7. **Quiz Detection**: Monitors the page for quiz questions
+8. **Question Extraction**: Extracts question text and answer options
+9. **AI Analysis**: Sends the question to GitHub Copilot CLI
+10. **Spec Generation**: Generates a Playwright test to select the correct answer
+11. **Execution**: Runs the generated test to submit the answer
+12. **Retry Logic**: If score is not 100%, restarts and retries with improved prompts
+13. **Results**: Reports final score and completion status for all courses
 
 ## Configuration
 
 The application can be configured through the console UI:
 
-- **Course URL**: The URL of the video course
+- **Course URL**: The URL of the video course or landing page with course list
+- **Username**: Your login username for the course platform
+- **Password**: Your login password (masked during input)
 - **Browser Mode**: 
   - Headless: Faster, runs in background
   - Headed: Visible browser window for debugging
