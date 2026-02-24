@@ -8,6 +8,7 @@ public class CourseNavigator
 {
     private readonly ILogger<CourseNavigator> _logger;
     private static readonly Regex PercentageRegex = new Regex(@"(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled);
+    private const double MaxPercentage = 100.0;
 
     public CourseNavigator(ILogger<CourseNavigator> logger)
     {
@@ -64,15 +65,39 @@ public class CourseNavigator
 
                         if (!string.IsNullOrEmpty(href))
                         {
-                            // Check if it's not completed
-                            if (text != null && !IsComplete(text))
+                            // Get parent element to check for completion percentage in container
+                            var parent = await element.EvaluateHandleAsync("el => el.closest('div, li, tr') || el.parentElement");
+                            string? parentText = null;
+                            
+                            if (parent != null)
+                            {
+                                try
+                                {
+                                    var parentElement = parent.AsElement();
+                                    if (parentElement != null)
+                                    {
+                                        parentText = await parentElement.TextContentAsync();
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Ignore if we can't get parent text - element may not be valid
+                                    _logger.LogDebug(ex, "Could not get parent element text");
+                                }
+                            }
+                            
+                            // Use parent text if available, otherwise use element text
+                            var checkText = !string.IsNullOrEmpty(parentText) ? parentText : text;
+                            
+                            // Check if it's not completed and at 0% progress
+                            if (checkText != null && !IsComplete(checkText) && IsZeroProgress(checkText))
                             {
                                 var fullUrl = href.StartsWith("http") ? href : new Uri(new Uri(page.Url), href).ToString();
                                 
                                 if (!incompleteCourses.Contains(fullUrl))
                                 {
                                     incompleteCourses.Add(fullUrl);
-                                    _logger.LogInformation("Found incomplete course: {Url} (Progress: {Text})", fullUrl, text.Trim());
+                                    _logger.LogInformation("Found incomplete course at 0%: {Url} (Progress: {Text})", fullUrl, text?.Trim());
                                 }
                             }
                         }
@@ -166,6 +191,52 @@ public class CourseNavigator
         }
     }
 
+    private bool IsZeroProgress(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true; // No progress indicator means 0%
+        }
+
+        // Check for percentage indicators
+        var matches = PercentageRegex.Matches(text);
+        
+        foreach (Match match in matches)
+        {
+            if (double.TryParse(match.Groups[1].Value, out double percentage))
+            {
+                // Any percentage > 0 means the course has been started
+                if (percentage > 0 && percentage < MaxPercentage)
+                {
+                    _logger.LogDebug("Course has progress: {Percentage}%", percentage);
+                    return false;
+                }
+            }
+        }
+
+        // Check for "In Progress" or similar indicators
+        var progressIndicators = new[]
+        {
+            "in progress",
+            "in corso",        // Italian
+            "continua",        // Italian - continue
+            "riprendi",        // Italian - resume
+            "resume"           // English
+        };
+
+        foreach (var indicator in progressIndicators)
+        {
+            if (text.Contains(indicator, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Course has been started: found indicator '{Indicator}'", indicator);
+                return false;
+            }
+        }
+
+        // If no percentage or progress indicator found, assume 0%
+        return true;
+    }
+
     private bool IsComplete(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -187,7 +258,7 @@ public class CourseNavigator
                 foundPercentage = true;
                 
                 // Check if we found 100% completion
-                if (percentage >= 100.0)
+                if (percentage >= MaxPercentage)
                 {
                     hasHundredPercent = true;
                     _logger.LogDebug("Found 100% completion indicator");
