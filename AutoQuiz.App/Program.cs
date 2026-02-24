@@ -28,6 +28,8 @@ var serviceProvider = new ServiceCollection()
     .AddSingleton<SpecExecutor>()
     // Services
     .AddSingleton<LoggerService>()
+    .AddSingleton<LoginService>()
+    .AddSingleton<CourseNavigator>()
     .AddSingleton<QuizAutomationService>()
     .BuildServiceProvider();
 

@@ -19,6 +19,8 @@ public class QuizAutomationService
     private readonly SpecGenerator _specGenerator;
     private readonly SpecExecutor _specExecutor;
     private readonly LoggerService _loggerService;
+    private readonly LoginService _loginService;
+    private readonly CourseNavigator _courseNavigator;
 
     public QuizAutomationService(
         ILogger<QuizAutomationService> logger,
@@ -30,7 +32,9 @@ public class QuizAutomationService
         CopilotCliExecutor copilotExecutor,
         SpecGenerator specGenerator,
         SpecExecutor specExecutor,
-        LoggerService loggerService)
+        LoggerService loggerService,
+        LoginService loginService,
+        CourseNavigator courseNavigator)
     {
         _logger = logger;
         _browserManager = browserManager;
@@ -42,16 +46,17 @@ public class QuizAutomationService
         _specGenerator = specGenerator;
         _specExecutor = specExecutor;
         _loggerService = loggerService;
+        _loginService = loginService;
+        _courseNavigator = courseNavigator;
     }
 
     public async Task<QuizResult> RunAsync(AutomationConfig config)
     {
-        _logger.LogInformation("Starting quiz automation for: {Url}", config.CourseUrl);
-        _loggerService.Log($"Starting quiz automation for: {config.CourseUrl}");
+        _logger.LogInformation("Starting quiz automation");
+        _loggerService.Log($"Starting quiz automation");
 
         IPage? page = null;
-        int retryCount = 0;
-        QuizResult? result = null;
+        var overallResult = new QuizResult();
 
         try
         {
@@ -59,43 +64,74 @@ public class QuizAutomationService
             page = await _browserManager.InitializeAsync(config.Headless);
             _loggerService.Log($"Browser initialized in {(config.Headless ? "headless" : "headed")} mode");
 
-            // Navigate to course URL
+            // Navigate to course URL for login
             await _pageNavigator.NavigateToAsync(page, config.CourseUrl);
-            _loggerService.Log($"Navigated to course URL");
+            _loggerService.Log($"Navigated to: {config.CourseUrl}");
 
-            while (retryCount < config.MaxRetries)
+            // Perform login
+            _logger.LogInformation("Attempting login...");
+            _loggerService.Log("🔐 Attempting login...");
+            
+            var loginSuccess = await _loginService.LoginAsync(page, config.Username, config.Password);
+            
+            if (!loginSuccess)
             {
-                retryCount++;
-                _logger.LogInformation("Attempt #{Retry}", retryCount);
-                _loggerService.Log($"=== ATTEMPT #{retryCount} ===");
-
-                result = await ProcessCourseAsync(page, config);
-
-                if (result.IsPerfectScore)
-                {
-                    _logger.LogInformation("Perfect score achieved! 🎉");
-                    _loggerService.Log("✅ Perfect score achieved! 100% correct!");
-                    break;
-                }
-
-                if (retryCount < config.MaxRetries)
-                {
-                    _logger.LogInformation("Score: {Score}%, retrying...", result.ScorePercentage);
-                    _loggerService.Log($"Score: {result.ScorePercentage:F1}%, retrying...");
-                    
-                    // Restart quiz
-                    await RestartQuizAsync(page);
-                    await Task.Delay(2000);
-                }
+                throw new Exception("Login failed. Please check your credentials.");
             }
 
-            if (result != null && !result.IsPerfectScore)
+            _logger.LogInformation("Login successful");
+            _loggerService.Log("✅ Login successful");
+
+            // Get list of incomplete courses
+            var incompleteCourses = await _courseNavigator.GetIncompleteCoursesAsync(page);
+            
+            if (incompleteCourses.Count == 0)
             {
-                _logger.LogWarning("Maximum retries reached. Final score: {Score}%", result.ScorePercentage);
-                _loggerService.Log($"⚠️  Maximum retries reached. Final score: {result.ScorePercentage:F1}%");
+                _logger.LogInformation("No incomplete courses found, processing current URL");
+                _loggerService.Log("No incomplete courses found, processing current URL");
+                
+                // Process the current course URL directly
+                incompleteCourses.Add(config.CourseUrl);
+            }
+            else
+            {
+                _logger.LogInformation("Found {Count} incomplete courses", incompleteCourses.Count);
+                _loggerService.Log($"📚 Found {incompleteCourses.Count} incomplete courses");
             }
 
-            return result ?? new QuizResult();
+            // Process each incomplete course
+            for (int i = 0; i < incompleteCourses.Count; i++)
+            {
+                var courseUrl = incompleteCourses[i];
+                _logger.LogInformation("Processing course {Index}/{Total}: {Url}", i + 1, incompleteCourses.Count, courseUrl);
+                _loggerService.Log($"📖 Processing course {i + 1}/{incompleteCourses.Count}: {courseUrl}");
+
+                // Navigate to the course
+                var navSuccess = await _courseNavigator.NavigateToCourseAsync(page, courseUrl);
+                
+                if (!navSuccess)
+                {
+                    _logger.LogWarning("Failed to navigate to course, skipping");
+                    _loggerService.Log("⚠️  Failed to navigate to course, skipping");
+                    continue;
+                }
+
+                // Process the course with retries
+                var courseResult = await ProcessCourseWithRetriesAsync(page, config);
+                
+                // Aggregate results
+                overallResult.TotalQuestions += courseResult.TotalQuestions;
+                overallResult.CorrectAnswers += courseResult.CorrectAnswers;
+                overallResult.IncorrectQuestions.AddRange(courseResult.IncorrectQuestions);
+
+                _logger.LogInformation("Course completed with score: {Score}%", courseResult.ScorePercentage);
+                _loggerService.Log($"Course completed with score: {courseResult.ScorePercentage:F1}%");
+            }
+
+            _logger.LogInformation("All courses processed");
+            _loggerService.Log("✅ All courses processed");
+
+            return overallResult;
         }
         catch (Exception ex)
         {
@@ -103,6 +139,46 @@ public class QuizAutomationService
             _loggerService.Log($"❌ Error: {ex.Message}");
             throw;
         }
+    }
+
+    private async Task<QuizResult> ProcessCourseWithRetriesAsync(IPage page, AutomationConfig config)
+    {
+        int retryCount = 0;
+        QuizResult? result = null;
+
+        while (retryCount < config.MaxRetries)
+        {
+            retryCount++;
+            _logger.LogInformation("Attempt #{Retry}", retryCount);
+            _loggerService.Log($"=== ATTEMPT #{retryCount} ===");
+
+            result = await ProcessCourseAsync(page, config);
+
+            if (result.IsPerfectScore)
+            {
+                _logger.LogInformation("Perfect score achieved! 🎉");
+                _loggerService.Log("✅ Perfect score achieved! 100% correct!");
+                break;
+            }
+
+            if (retryCount < config.MaxRetries)
+            {
+                _logger.LogInformation("Score: {Score}%, retrying...", result.ScorePercentage);
+                _loggerService.Log($"Score: {result.ScorePercentage:F1}%, retrying...");
+                
+                // Restart quiz
+                await RestartQuizAsync(page);
+                await Task.Delay(2000);
+            }
+        }
+
+        if (result != null && !result.IsPerfectScore)
+        {
+            _logger.LogWarning("Maximum retries reached. Final score: {Score}%", result.ScorePercentage);
+            _loggerService.Log($"⚠️  Maximum retries reached. Final score: {result.ScorePercentage:F1}%");
+        }
+
+        return result ?? new QuizResult();
     }
 
     private async Task<QuizResult> ProcessCourseAsync(IPage page, AutomationConfig config)
