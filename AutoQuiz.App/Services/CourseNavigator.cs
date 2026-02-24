@@ -62,8 +62,11 @@ public class CourseNavigator
 
                         if (!string.IsNullOrEmpty(href))
                         {
-                            // Check if it's not completed
-                            if (text != null && !text.Contains("Completed") && !text.Contains("100%"))
+                            // Check if it's not completed (case-insensitive)
+                            if (text != null && 
+                                !text.Contains("Completed", StringComparison.OrdinalIgnoreCase) && 
+                                !text.Contains("Complete", StringComparison.OrdinalIgnoreCase) &&
+                                !text.Contains("100%"))
                             {
                                 var fullUrl = href.StartsWith("http") ? href : new Uri(new Uri(page.Url), href).ToString();
                                 

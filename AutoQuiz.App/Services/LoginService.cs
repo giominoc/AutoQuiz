@@ -122,6 +122,38 @@ public class LoginService
                 Timeout = 30000
             });
 
+            // Verify login success by checking for common error indicators
+            var errorSelectors = new[]
+            {
+                ":has-text('Invalid')",
+                ":has-text('incorrect')",
+                ":has-text('wrong')",
+                ":has-text('failed')",
+                ".error-message",
+                ".alert-error",
+                "[role='alert']"
+            };
+
+            foreach (var selector in errorSelectors)
+            {
+                var errorElement = await page.QuerySelectorAsync(selector);
+                if (errorElement != null)
+                {
+                    var errorText = await errorElement.TextContentAsync();
+                    _logger.LogError("Login failed with error: {Error}", errorText);
+                    return false;
+                }
+            }
+
+            // Check if we're still on the login page (another indicator of failure)
+            var currentUrl = page.Url;
+            if (currentUrl.Contains("/login", StringComparison.OrdinalIgnoreCase) ||
+                currentUrl.Contains("/signin", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError("Still on login page after submission");
+                return false;
+            }
+
             _logger.LogInformation("Login completed successfully");
             return true;
         }

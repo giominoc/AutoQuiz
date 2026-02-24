@@ -76,7 +76,7 @@ public class QuizAutomationService
             
             if (!loginSuccess)
             {
-                throw new Exception("Login failed. Please check your credentials.");
+                throw new Exception("Login failed. Please verify your credentials and ensure the login page is accessible. Check the browser for any error messages or CAPTCHAs that may require manual intervention.");
             }
 
             _logger.LogInformation("Login successful");

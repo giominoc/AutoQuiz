@@ -96,7 +96,7 @@ public class ConsoleUI
         Console.ResetColor();
         Console.WriteLine($"  Course URL: {config.CourseUrl}");
         Console.WriteLine($"  Username: {config.Username}");
-        Console.WriteLine($"  Password: {"*".PadLeft(config.Password.Length, '*')}");
+        Console.WriteLine($"  Password: {new string('*', config.Password.Length)}");
         Console.WriteLine($"  Browser Mode: {(config.Headless ? "Headless" : "Headed")}");
         Console.WriteLine($"  Max Retries: {config.MaxRetries}");
         Console.WriteLine();
