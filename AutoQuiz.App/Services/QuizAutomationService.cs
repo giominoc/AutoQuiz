@@ -279,10 +279,23 @@ public class QuizAutomationService
             // Try to find restart/retake button
             var restartButtons = new[]
             {
+                // English
                 "button:has-text('Restart')",
                 "button:has-text('Retake')",
                 "button:has-text('Try Again')",
-                "[data-purpose='restart-quiz']"
+                "a:has-text('Restart')",
+                "a:has-text('Retake')",
+                
+                // Italian
+                "button:has-text('Ricomincia')",
+                "button:has-text('Riprova')",
+                "button:has-text('Riavvia')",
+                "a:has-text('Ricomincia')",
+                "a:has-text('Riprova')",
+                
+                "[data-purpose='restart-quiz']",
+                "[class*='restart']",
+                "[id*='restart']"
             };
 
             foreach (var button in restartButtons)

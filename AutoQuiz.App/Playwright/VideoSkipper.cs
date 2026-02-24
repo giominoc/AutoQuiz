@@ -57,16 +57,25 @@ public class VideoSkipper
             // Try to find and click skip button
             var skipButtons = new[]
             {
+                // English
                 "button:has-text('Skip')",
+                "button:has-text('Next')",
+                "a:has-text('Skip')",
+                
+                // Italian
+                "button:has-text('Salta')",
+                "button:has-text('Avanti')",
+                "a:has-text('Salta')",
+                
                 "[data-purpose='skip-button']",
                 ".skip-button",
-                "button:has-text('Next')"
+                "[class*='skip']"
             };
 
             foreach (var button in skipButtons)
             {
                 var skipButton = await page.QuerySelectorAsync(button);
-                if (skipButton != null)
+                if (skipButton != null && await skipButton.IsVisibleAsync())
                 {
                     await skipButton.ClickAsync();
                     _logger.LogInformation("Clicked skip button: {Button}", button);

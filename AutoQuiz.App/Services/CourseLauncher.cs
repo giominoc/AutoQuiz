@@ -44,6 +44,9 @@ public class CourseLauncher
             // Click the launch button
             await launchButton.ClickAsync();
             _logger.LogInformation("Launch button clicked");
+            
+            // Wait a moment for any page transitions
+            await Task.Delay(1000);
 
             IPage? targetPage = null;
             
