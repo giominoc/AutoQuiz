@@ -6,6 +6,7 @@ namespace AutoQuiz.App.Playwright;
 public class PageNavigator
 {
     private readonly ILogger<PageNavigator> _logger;
+    private readonly HashSet<string> _visitedMenuItems = new HashSet<string>();
 
     public PageNavigator(ILogger<PageNavigator> logger)
     {
@@ -134,11 +135,30 @@ public class PageNavigator
                 {
                     _logger.LogInformation("Found {Count} menu items with selector: {Selector}", menuItems.Count, selector);
 
-                    // Find the first unlocked/available item that's not completed
+                    // First pass: Look for Italian language items
+                    var italianItem = await FindPreferredLanguageItemAsync(menuItems, new[] { "ITALIANO", "ITALIAN", "ITA " });
+                    if (italianItem != null)
+                    {
+                        var text = await italianItem.TextContentAsync() ?? "";
+                        _logger.LogInformation("Found Italian module, clicking: {Text}", text.Trim());
+                        await italianItem.ClickAsync();
+                        await Task.Delay(2000);
+                        return true;
+                    }
+
+                    // Second pass: Find the first unlocked/available item that's not completed or current
                     foreach (var item in menuItems)
                     {
                         var classes = await item.GetAttributeAsync("class") ?? "";
                         var text = await item.TextContentAsync() ?? "";
+                        
+                        // Skip if we've already visited this item (to prevent loops)
+                        var itemKey = $"{text.Trim()}|{classes}";
+                        if (_visitedMenuItems.Contains(itemKey))
+                        {
+                            _logger.LogDebug("Skipping already visited menu item: {Text}", text.Trim());
+                            continue;
+                        }
                         
                         // Check if item is available (not locked/disabled and not completed)
                         var isLocked = classes.Contains("locked", StringComparison.OrdinalIgnoreCase) ||
@@ -150,8 +170,18 @@ public class PageNavigator
                                          text.Contains("✓") ||
                                          text.Contains("✔");
 
-                        if (!isLocked && !isCompleted && await item.IsVisibleAsync())
+                        // Check if item is the current/active item
+                        var isCurrent = classes.Contains("current", StringComparison.OrdinalIgnoreCase) ||
+                                       classes.Contains("active", StringComparison.OrdinalIgnoreCase) ||
+                                       classes.Contains("selected", StringComparison.OrdinalIgnoreCase) ||
+                                       text.Contains("Unità corrente", StringComparison.OrdinalIgnoreCase) ||
+                                       text.Contains("Current unit", StringComparison.OrdinalIgnoreCase);
+
+                        if (!isLocked && !isCompleted && !isCurrent && await item.IsVisibleAsync())
                         {
+                            // Mark as visited
+                            _visitedMenuItems.Add(itemKey);
+                            
                             _logger.LogInformation("Clicking next menu item: {Text}", text.Trim());
                             await item.ClickAsync();
                             await Task.Delay(2000);
@@ -168,5 +198,44 @@ public class PageNavigator
             _logger.LogWarning(ex, "Error in SCORM menu navigation");
             return false;
         }
+    }
+
+    private async Task<IElementHandle?> FindPreferredLanguageItemAsync(IReadOnlyList<IElementHandle> menuItems, string[] languageKeywords)
+    {
+        foreach (var item in menuItems)
+        {
+            var text = await item.TextContentAsync() ?? "";
+            var classes = await item.GetAttributeAsync("class") ?? "";
+            
+            // Check if item contains any of the language keywords
+            foreach (var keyword in languageKeywords)
+            {
+                if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Make sure it's not locked, completed, or current
+                    var isLocked = classes.Contains("locked", StringComparison.OrdinalIgnoreCase) ||
+                                  classes.Contains("disabled", StringComparison.OrdinalIgnoreCase);
+                    
+                    var isCompleted = classes.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
+                                     classes.Contains("completato", StringComparison.OrdinalIgnoreCase) ||
+                                     classes.Contains("completata", StringComparison.OrdinalIgnoreCase) ||
+                                     text.Contains("✓") ||
+                                     text.Contains("✔");
+
+                    var isCurrent = classes.Contains("current", StringComparison.OrdinalIgnoreCase) ||
+                                   classes.Contains("active", StringComparison.OrdinalIgnoreCase) ||
+                                   classes.Contains("selected", StringComparison.OrdinalIgnoreCase) ||
+                                   text.Contains("Unità corrente", StringComparison.OrdinalIgnoreCase) ||
+                                   text.Contains("Current unit", StringComparison.OrdinalIgnoreCase);
+
+                    if (!isLocked && !isCompleted && !isCurrent && await item.IsVisibleAsync())
+                    {
+                        return item;
+                    }
+                }
+            }
+        }
+        
+        return null;
     }
 }
