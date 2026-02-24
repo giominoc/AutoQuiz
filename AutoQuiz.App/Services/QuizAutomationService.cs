@@ -56,7 +56,7 @@ public class QuizAutomationService
         _loggerService.Log($"Starting quiz automation");
 
         IPage? page = null;
-        var overallResult = new QuizResult();
+        var aggregatedResults = new QuizResult();
 
         try
         {
@@ -76,7 +76,10 @@ public class QuizAutomationService
             
             if (!loginSuccess)
             {
-                throw new Exception("Login failed. Please verify your credentials and ensure the login page is accessible. Check the browser for any error messages or CAPTCHAs that may require manual intervention.");
+                throw new Exception("Login failed. Please:\n" +
+                    "  1) Verify your credentials are correct\n" +
+                    "  2) Ensure the login page is accessible\n" +
+                    "  3) Check for error messages or CAPTCHAs that may require manual intervention");
             }
 
             _logger.LogInformation("Login successful");
@@ -120,9 +123,9 @@ public class QuizAutomationService
                 var courseResult = await ProcessCourseWithRetriesAsync(page, config);
                 
                 // Aggregate results
-                overallResult.TotalQuestions += courseResult.TotalQuestions;
-                overallResult.CorrectAnswers += courseResult.CorrectAnswers;
-                overallResult.IncorrectQuestions.AddRange(courseResult.IncorrectQuestions);
+                aggregatedResults.TotalQuestions += courseResult.TotalQuestions;
+                aggregatedResults.CorrectAnswers += courseResult.CorrectAnswers;
+                aggregatedResults.IncorrectQuestions.AddRange(courseResult.IncorrectQuestions);
 
                 _logger.LogInformation("Course completed with score: {Score}%", courseResult.ScorePercentage);
                 _loggerService.Log($"Course completed with score: {courseResult.ScorePercentage:F1}%");
@@ -131,7 +134,7 @@ public class QuizAutomationService
             _logger.LogInformation("All courses processed");
             _loggerService.Log("✅ All courses processed");
 
-            return overallResult;
+            return aggregatedResults;
         }
         catch (Exception ex)
         {

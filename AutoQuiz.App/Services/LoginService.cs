@@ -7,6 +7,14 @@ public class LoginService
 {
     private readonly ILogger<LoginService> _logger;
 
+    // Login page URL patterns for detection
+    private static readonly string[] LoginPagePatterns = new[]
+    {
+        "/login",
+        "/signin",
+        "/sign-in"
+    };
+
     public LoginService(ILogger<LoginService> logger)
     {
         _logger = logger;
@@ -147,11 +155,13 @@ public class LoginService
 
             // Check if we're still on the login page (another indicator of failure)
             var currentUrl = page.Url;
-            if (currentUrl.Contains("/login", StringComparison.OrdinalIgnoreCase) ||
-                currentUrl.Contains("/signin", StringComparison.OrdinalIgnoreCase))
+            foreach (var pattern in LoginPagePatterns)
             {
-                _logger.LogError("Still on login page after submission");
-                return false;
+                if (currentUrl.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogError("Still on login page after submission");
+                    return false;
+                }
             }
 
             _logger.LogInformation("Login completed successfully");
