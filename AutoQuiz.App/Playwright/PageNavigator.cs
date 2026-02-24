@@ -153,6 +153,7 @@ public class PageNavigator
                         var text = await item.TextContentAsync() ?? "";
                         
                         // Skip if we've already visited this item (to prevent loops)
+                        // Format: "text|classes" to uniquely identify menu items
                         var itemKey = $"{text.Trim()}|{classes}";
                         if (_visitedMenuItems.Contains(itemKey))
                         {

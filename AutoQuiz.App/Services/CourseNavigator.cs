@@ -8,6 +8,7 @@ public class CourseNavigator
 {
     private readonly ILogger<CourseNavigator> _logger;
     private static readonly Regex PercentageRegex = new Regex(@"(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled);
+    private const double MaxPercentage = 100.0;
 
     public CourseNavigator(ILogger<CourseNavigator> logger)
     {
@@ -78,9 +79,10 @@ public class CourseNavigator
                                         parentText = await parentElement.TextContentAsync();
                                     }
                                 }
-                                catch
+                                catch (Exception ex)
                                 {
-                                    // Ignore if we can't get parent text
+                                    // Ignore if we can't get parent text - element may not be valid
+                                    _logger.LogDebug(ex, "Could not get parent element text");
                                 }
                             }
                             
@@ -204,7 +206,7 @@ public class CourseNavigator
             if (double.TryParse(match.Groups[1].Value, out double percentage))
             {
                 // Any percentage > 0 means the course has been started
-                if (percentage > 0 && percentage < 100)
+                if (percentage > 0 && percentage < MaxPercentage)
                 {
                     _logger.LogDebug("Course has progress: {Percentage}%", percentage);
                     return false;
@@ -256,7 +258,7 @@ public class CourseNavigator
                 foundPercentage = true;
                 
                 // Check if we found 100% completion
-                if (percentage >= 100.0)
+                if (percentage >= MaxPercentage)
                 {
                     hasHundredPercent = true;
                     _logger.LogDebug("Found 100% completion indicator");
