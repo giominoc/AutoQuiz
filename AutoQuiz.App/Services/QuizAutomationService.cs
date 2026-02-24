@@ -21,6 +21,7 @@ public class QuizAutomationService
     private readonly LoggerService _loggerService;
     private readonly LoginService _loginService;
     private readonly CourseNavigator _courseNavigator;
+    private readonly CourseLauncher _courseLauncher;
 
     public QuizAutomationService(
         ILogger<QuizAutomationService> logger,
@@ -34,7 +35,8 @@ public class QuizAutomationService
         SpecExecutor specExecutor,
         LoggerService loggerService,
         LoginService loginService,
-        CourseNavigator courseNavigator)
+        CourseNavigator courseNavigator,
+        CourseLauncher courseLauncher)
     {
         _logger = logger;
         _browserManager = browserManager;
@@ -48,6 +50,7 @@ public class QuizAutomationService
         _loggerService = loggerService;
         _loginService = loginService;
         _courseNavigator = courseNavigator;
+        _courseLauncher = courseLauncher;
     }
 
     public async Task<QuizResult> RunAsync(AutomationConfig config)
@@ -146,6 +149,18 @@ public class QuizAutomationService
 
     private async Task<QuizResult> ProcessCourseWithRetriesAsync(IPage page, AutomationConfig config)
     {
+        // Launch the course (handle SCORM/NOVOLEARN launch buttons and popups)
+        _logger.LogInformation("Attempting to launch course...");
+        _loggerService.Log("🚀 Attempting to launch course...");
+        
+        var activePage = await _courseLauncher.TryLaunchCourseAsync(page);
+        
+        if (activePage == null)
+        {
+            _logger.LogWarning("Course launch returned null, using original page");
+            activePage = page;
+        }
+        
         int retryCount = 0;
         QuizResult? result = null;
 
@@ -155,7 +170,7 @@ public class QuizAutomationService
             _logger.LogInformation("Attempt #{Retry}", retryCount);
             _loggerService.Log($"=== ATTEMPT #{retryCount} ===");
 
-            result = await ProcessCourseAsync(page, config);
+            result = await ProcessCourseAsync(activePage, config);
 
             if (result.IsPerfectScore)
             {
@@ -170,7 +185,7 @@ public class QuizAutomationService
                 _loggerService.Log($"Score: {result.ScorePercentage:F1}%, retrying...");
                 
                 // Restart quiz
-                await RestartQuizAsync(page);
+                await RestartQuizAsync(activePage);
                 await Task.Delay(2000);
             }
         }
@@ -264,10 +279,23 @@ public class QuizAutomationService
             // Try to find restart/retake button
             var restartButtons = new[]
             {
+                // English
                 "button:has-text('Restart')",
                 "button:has-text('Retake')",
                 "button:has-text('Try Again')",
-                "[data-purpose='restart-quiz']"
+                "a:has-text('Restart')",
+                "a:has-text('Retake')",
+                
+                // Italian
+                "button:has-text('Ricomincia')",
+                "button:has-text('Riprova')",
+                "button:has-text('Riavvia')",
+                "a:has-text('Ricomincia')",
+                "a:has-text('Riprova')",
+                
+                "[data-purpose='restart-quiz']",
+                "[class*='restart']",
+                "[id*='restart']"
             };
 
             foreach (var button in restartButtons)

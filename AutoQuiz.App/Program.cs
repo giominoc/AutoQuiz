@@ -30,6 +30,7 @@ var serviceProvider = new ServiceCollection()
     .AddSingleton<LoggerService>()
     .AddSingleton<LoginService>()
     .AddSingleton<CourseNavigator>()
+    .AddSingleton<CourseLauncher>()
     .AddSingleton<QuizAutomationService>()
     .BuildServiceProvider();
 
