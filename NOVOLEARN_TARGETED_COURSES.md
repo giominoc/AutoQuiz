@@ -25,7 +25,7 @@ Added a whitelist of allowed course titles:
 private static readonly string[] AllowedCourseTitles = new[]
 {
     "Anti-Corruption 2.0 INT",
-    "FORMAZIONE IN MATERIA DI D.LGS.",  // Covers variations like "FORMAZIONE IN MATERIA DI D.LGS. 231/2001"
+    "FORMAZIONE IN MATERIA DI D.LGS.",  // Prefix pattern: matches "FORMAZIONE IN MATERIA DI D.LGS. 231/2001"
     "GDPR - REFRESHER 3 INT"
 };
 ```
@@ -52,12 +52,9 @@ private bool IsAllowedCourseTitle(string courseTitle)
     {
         var normalizedAllowed = Regex.Replace(allowedTitle, @"\s+", " ");
         
-        // Check if the course title starts with the allowed pattern
+        // Check if the course title starts with the allowed pattern (prefix matching)
+        // Note: StartsWith also handles exact matches (a string always starts with itself)
         if (normalizedTitle.StartsWith(normalizedAllowed, StringComparison.OrdinalIgnoreCase))
-            return true;
-        
-        // Also check exact match with flexible whitespace
-        if (normalizedTitle.Equals(normalizedAllowed, StringComparison.OrdinalIgnoreCase))
             return true;
     }
 
