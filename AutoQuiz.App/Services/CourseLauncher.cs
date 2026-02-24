@@ -6,6 +6,8 @@ namespace AutoQuiz.App.Services;
 public class CourseLauncher
 {
     private readonly ILogger<CourseLauncher> _logger;
+    private const int IframeLoadDelayMs = 2000;
+    private const int PostClickDelayMs = 2000;
 
     public CourseLauncher(ILogger<CourseLauncher> logger)
     {
@@ -147,7 +149,7 @@ public class CourseLauncher
         try
         {
             // Wait a bit for iframe to load
-            await Task.Delay(2000);
+            await Task.Delay(IframeLoadDelayMs);
 
             // Look for frames containing SCORM content
             var frames = page.Frames;
@@ -223,7 +225,7 @@ public class CourseLauncher
                     _logger.LogInformation("Start button clicked");
                     
                     // Wait for navigation/content to load
-                    await Task.Delay(2000);
+                    await Task.Delay(PostClickDelayMs);
                     return true;
                 }
             }
@@ -250,7 +252,7 @@ public class CourseLauncher
                         await element.ClickAsync();
                         _logger.LogInformation("Start button clicked in frame");
                         
-                        await Task.Delay(2000);
+                        await Task.Delay(PostClickDelayMs);
                         return true;
                     }
                 }

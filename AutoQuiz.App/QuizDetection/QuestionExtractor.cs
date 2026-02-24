@@ -8,6 +8,7 @@ public class QuestionExtractor
 {
     private readonly ILogger<QuestionExtractor> _logger;
     private readonly ScreenshotCapture _screenshotCapture;
+    private const int MaxAnswerTextLength = 500;
 
     public QuestionExtractor(ILogger<QuestionExtractor> logger, ScreenshotCapture screenshotCapture)
     {
@@ -130,7 +131,7 @@ public class QuestionExtractor
             _logger.LogInformation("HTML dump saved: {Path}", htmlPath);
             
             _logger.LogInformation("Diagnostic info - Question text: '{Text}', Answers found: {Count}", 
-                string.IsNullOrWhiteSpace(questionText) ? "(none)" : questionText.Substring(0, Math.Min(100, questionText.Length)), 
+                string.IsNullOrWhiteSpace(questionText) ? "(none)" : questionText[..Math.Min(100, questionText.Length)], 
                 answers.Count);
         }
         catch (Exception ex)
@@ -197,7 +198,7 @@ public class QuestionExtractor
                 foreach (var item in listItems)
                 {
                     var text = await item.TextContentAsync();
-                    if (!string.IsNullOrWhiteSpace(text) && text.Length < 500)
+                    if (!string.IsNullOrWhiteSpace(text) && text.Length < MaxAnswerTextLength)
                     {
                         // Check if the item looks like an answer option
                         var trimmedText = text.Trim();
@@ -221,7 +222,7 @@ public class QuestionExtractor
                 foreach (var label in labels)
                 {
                     var text = await label.TextContentAsync();
-                    if (!string.IsNullOrWhiteSpace(text) && text.Length < 500)
+                    if (!string.IsNullOrWhiteSpace(text) && text.Length < MaxAnswerTextLength)
                     {
                         answers.Add(text.Trim());
                     }

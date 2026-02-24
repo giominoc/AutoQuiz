@@ -146,6 +146,7 @@ public class PageNavigator
                         
                         var isCompleted = classes.Contains("completed", StringComparison.OrdinalIgnoreCase) ||
                                          classes.Contains("completato", StringComparison.OrdinalIgnoreCase) ||
+                                         classes.Contains("completata", StringComparison.OrdinalIgnoreCase) ||
                                          text.Contains("✓") ||
                                          text.Contains("✔");
 
