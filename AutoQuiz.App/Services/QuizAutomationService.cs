@@ -112,6 +112,9 @@ public class QuizAutomationService
                 _logger.LogInformation("Processing course {Index}/{Total}: {Url}", i + 1, incompleteCourses.Count, courseUrl);
                 _loggerService.Log($"📖 Processing course {i + 1}/{incompleteCourses.Count}: {courseUrl}");
 
+                // Reset visited menu items to prevent cross-course pollution
+                _pageNavigator.ResetVisitedMenuItems();
+
                 // Navigate to the course
                 var navSuccess = await _courseNavigator.NavigateToCourseAsync(page, courseUrl);
                 
@@ -203,9 +206,42 @@ public class QuizAutomationService
     {
         var result = new QuizResult();
         var questionNumber = 0;
+        var sameUrlCounter = 0;
+        var maxSameUrlAttempts = 3;
+        var maxIterations = 100; // Prevent infinite loops
+        var iterationCount = 0;
+        string lastUrl = string.Empty;
 
         while (true)
         {
+            iterationCount++;
+            
+            // Loop prevention: Check iteration limit
+            if (iterationCount > maxIterations)
+            {
+                _logger.LogWarning("Maximum iteration limit ({Limit}) reached, stopping to prevent infinite loop", maxIterations);
+                _loggerService.Log($"⚠️  Maximum iteration limit reached ({maxIterations}), stopping course processing");
+                break;
+            }
+
+            // Loop prevention: Track current URL to detect stuck scenarios
+            var currentUrl = page.Url;
+            if (currentUrl == lastUrl)
+            {
+                sameUrlCounter++;
+                if (sameUrlCounter >= maxSameUrlAttempts)
+                {
+                    _logger.LogWarning("Stuck on same URL '{Url}' for {Count} iterations, likely in a loop - breaking", currentUrl, sameUrlCounter);
+                    _loggerService.Log($"⚠️  Detected loop: same URL visited {sameUrlCounter} times, stopping");
+                    break;
+                }
+            }
+            else
+            {
+                sameUrlCounter = 0;
+                lastUrl = currentUrl;
+            }
+
             // Skip videos
             await _videoSkipper.SkipVideoIfPresentAsync(page, config.VideoSkipDelayMs);
 
@@ -217,6 +253,23 @@ public class QuizAutomationService
 
                 // Extract questions
                 var questions = await _quizDetector.ExtractQuestionsAsync(page);
+                
+                // Loop prevention: Check if we got any questions
+                if (!questions.Any())
+                {
+                    _logger.LogWarning("Quiz detected but no questions extracted, attempting to continue");
+                    _loggerService.Log("⚠️  Quiz detected but no questions could be extracted");
+                    
+                    // Try to navigate forward anyway
+                    var tryNext = await _pageNavigator.TryClickNextAsync(page);
+                    if (!tryNext)
+                    {
+                        _logger.LogInformation("No next button found after failed extraction, stopping");
+                        break;
+                    }
+                    await Task.Delay(2000);
+                    continue;
+                }
 
                 foreach (var question in questions)
                 {
@@ -266,6 +319,7 @@ public class QuizAutomationService
             await Task.Delay(2000); // Wait between pages
         }
 
+        _logger.LogInformation("Course processing completed after {Count} iterations", iterationCount);
         return result;
     }
 

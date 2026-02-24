@@ -13,6 +13,12 @@ public class PageNavigator
         _logger = logger;
     }
 
+    public void ResetVisitedMenuItems()
+    {
+        _logger.LogDebug("Resetting visited menu items tracker");
+        _visitedMenuItems.Clear();
+    }
+
     public async Task NavigateToAsync(IPage page, string url)
     {
         _logger.LogInformation("Navigating to: {Url}", url);
