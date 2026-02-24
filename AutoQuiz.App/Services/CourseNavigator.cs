@@ -10,6 +10,14 @@ public class CourseNavigator
     private static readonly Regex PercentageRegex = new Regex(@"(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled);
     private const double MaxPercentage = 100.0;
 
+    // Novolearn-specific allowed course titles (exact matches with flexible whitespace)
+    private static readonly string[] AllowedCourseTitles = new[]
+    {
+        "Anti-Corruption 2.0 INT",
+        "FORMAZIONE IN MATERIA DI D.LGS.",  // Covers variations like "FORMAZIONE IN MATERIA DI D.LGS. 231/2001"
+        "GDPR - REFRESHER 3 INT"
+    };
+
     public CourseNavigator(ILogger<CourseNavigator> logger)
     {
         _logger = logger;
@@ -65,6 +73,16 @@ public class CourseNavigator
 
                         if (!string.IsNullOrEmpty(href))
                         {
+                            // First check if this is an allowed course title
+                            var courseTitle = text?.Trim() ?? "";
+                            if (!IsAllowedCourseTitle(courseTitle))
+                            {
+                                _logger.LogDebug("Skipping course '{Title}' - not in allowed list", courseTitle);
+                                continue;
+                            }
+
+                            _logger.LogInformation("Found allowed course title: '{Title}'", courseTitle);
+
                             // Get parent element to check for completion percentage in container
                             var parent = await element.EvaluateHandleAsync("el => el.closest('div, li, tr') || el.parentElement");
                             string? parentText = null;
@@ -97,8 +115,12 @@ public class CourseNavigator
                                 if (!incompleteCourses.Contains(fullUrl))
                                 {
                                     incompleteCourses.Add(fullUrl);
-                                    _logger.LogInformation("Found incomplete course at 0%: {Url} (Progress: {Text})", fullUrl, text?.Trim());
+                                    _logger.LogInformation("Found incomplete course at 0%: {Url} (Title: {Title}, Progress: {Text})", fullUrl, courseTitle, checkText?.Trim());
                                 }
+                            }
+                            else
+                            {
+                                _logger.LogDebug("Skipping course '{Title}' - already completed or has progress > 0%", courseTitle);
                             }
                         }
                     }
@@ -191,11 +213,83 @@ public class CourseNavigator
         }
     }
 
+    private bool IsAllowedCourseTitle(string courseTitle)
+    {
+        if (string.IsNullOrWhiteSpace(courseTitle))
+        {
+            return false;
+        }
+
+        // Normalize whitespace for comparison
+        var normalizedTitle = System.Text.RegularExpressions.Regex.Replace(courseTitle.Trim(), @"\s+", " ");
+
+        foreach (var allowedTitle in AllowedCourseTitles)
+        {
+            var normalizedAllowed = System.Text.RegularExpressions.Regex.Replace(allowedTitle, @"\s+", " ");
+            
+            // Check if the course title starts with the allowed pattern (for variations like "FORMAZIONE IN MATERIA DI D.LGS. 231/2001")
+            if (normalizedTitle.StartsWith(normalizedAllowed, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Course title '{Title}' matches allowed pattern '{Pattern}'", courseTitle, allowedTitle);
+                return true;
+            }
+            
+            // Also check exact match with flexible whitespace
+            if (normalizedTitle.Equals(normalizedAllowed, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Course title '{Title}' exactly matches allowed title '{Pattern}'", courseTitle, allowedTitle);
+                return true;
+            }
+        }
+
+        _logger.LogDebug("Course title '{Title}' is not in the allowed list", courseTitle);
+        return false;
+    }
+
     private bool IsZeroProgress(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
             return true; // No progress indicator means 0%
+        }
+
+        // Check for green "COMPLETATO" badge or completion indicators (these should be excluded)
+        var completionBadges = new[]
+        {
+            "COMPLETATO",       // Italian completed badge
+            "COMPLETATA",       // Italian completed (feminine)
+            "COMPLETED",        // English completed badge
+            "✓",                // Checkmark
+            "✔"                 // Checkmark variant
+        };
+
+        foreach (var badge in completionBadges)
+        {
+            if (text.Contains(badge, StringComparison.OrdinalIgnoreCase))
+            {
+                // However, if we see "0% COMPLETATO", that's actually 0% progress, not completed
+                // Check if there's a "0%" before the badge
+                var percentageMatches = PercentageRegex.Matches(text);
+                bool hasZeroPercent = false;
+                
+                foreach (Match match in percentageMatches)
+                {
+                    if (double.TryParse(match.Groups[1].Value, out double percentage))
+                    {
+                        if (percentage == 0)
+                        {
+                            hasZeroPercent = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!hasZeroPercent)
+                {
+                    _logger.LogDebug("Course has completion badge '{Badge}', excluding", badge);
+                    return false;
+                }
+            }
         }
 
         // Check for percentage indicators
@@ -205,11 +299,17 @@ public class CourseNavigator
         {
             if (double.TryParse(match.Groups[1].Value, out double percentage))
             {
-                // Any percentage > 0 means the course has been started
+                // Only 0% is acceptable - any percentage > 0 means the course has been started
                 if (percentage > 0 && percentage < MaxPercentage)
                 {
                     _logger.LogDebug("Course has progress: {Percentage}%", percentage);
                     return false;
+                }
+                // If we found 0%, that's good - continue checking
+                if (percentage == 0)
+                {
+                    _logger.LogDebug("Course is at 0% progress");
+                    // Continue checking for other indicators
                 }
             }
         }
