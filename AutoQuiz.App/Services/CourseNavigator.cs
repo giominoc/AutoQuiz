@@ -1,5 +1,6 @@
 using Microsoft.Playwright;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace AutoQuiz.App.Services;
 
@@ -62,18 +63,15 @@ public class CourseNavigator
 
                         if (!string.IsNullOrEmpty(href))
                         {
-                            // Check if it's not completed (case-insensitive)
-                            if (text != null && 
-                                !text.Contains("Completed", StringComparison.OrdinalIgnoreCase) && 
-                                !text.Contains("Complete", StringComparison.OrdinalIgnoreCase) &&
-                                !text.Contains("100%"))
+                            // Check if it's not completed
+                            if (text != null && !IsComplete(text))
                             {
                                 var fullUrl = href.StartsWith("http") ? href : new Uri(new Uri(page.Url), href).ToString();
                                 
                                 if (!incompleteCourses.Contains(fullUrl))
                                 {
                                     incompleteCourses.Add(fullUrl);
-                                    _logger.LogInformation("Found incomplete course: {Url}", fullUrl);
+                                    _logger.LogInformation("Found incomplete course: {Url} (Progress: {Text})", fullUrl, text.Trim());
                                 }
                             }
                         }
@@ -122,12 +120,28 @@ public class CourseNavigator
     {
         try
         {
-            // Check for completion indicators
+            // Get the page text content to check for completion
+            var bodyText = await page.TextContentAsync("body");
+            
+            if (!string.IsNullOrEmpty(bodyText))
+            {
+                var isComplete = IsComplete(bodyText);
+                if (isComplete)
+                {
+                    _logger.LogInformation("Course appears to be complete");
+                    return true;
+                }
+            }
+
+            // Also check for specific completion indicators in the UI
             var completionSelectors = new[]
             {
                 ":has-text('Completed')",
+                ":has-text('Completato')",      // Italian
+                ":has-text('Completata')",      // Italian (feminine)
                 ":has-text('100%')",
                 ":has-text('Certificate')",
+                ":has-text('Certificato')",     // Italian
                 "[data-purpose='completion-indicator']"
             };
 
@@ -136,7 +150,7 @@ public class CourseNavigator
                 var element = await page.QuerySelectorAsync(selector);
                 if (element != null)
                 {
-                    _logger.LogInformation("Course appears to be complete");
+                    _logger.LogInformation("Course appears to be complete (found completion element)");
                     return true;
                 }
             }
@@ -149,5 +163,62 @@ public class CourseNavigator
             _logger.LogError(ex, "Error checking course completion status");
             return false;
         }
+    }
+
+    private bool IsComplete(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        // Check for 100% completion in various formats
+        // Match patterns like: "100%", "100 %", "100.0%", etc.
+        var percentageRegex = new Regex(@"(\d+(?:\.\d+)?)\s*%");
+        var matches = percentageRegex.Matches(text);
+        
+        foreach (Match match in matches)
+        {
+            if (double.TryParse(match.Groups[1].Value, out double percentage))
+            {
+                // Only consider 100% as complete, anything less is incomplete
+                if (percentage >= 100.0)
+                {
+                    _logger.LogDebug("Course is complete: found {Percentage}%", percentage);
+                    return true;
+                }
+                else
+                {
+                    _logger.LogDebug("Course is incomplete: found {Percentage}%", percentage);
+                    return false;
+                }
+            }
+        }
+
+        // Check for completion keywords in multiple languages
+        var completionKeywords = new[]
+        {
+            "completed",    // English
+            "complete",     // English
+            "completato",   // Italian
+            "completata",   // Italian (feminine)
+            "terminato",    // Italian
+            "terminata",    // Italian (feminine)
+            "finito",       // Italian
+            "finita"        // Italian (feminine)
+        };
+
+        foreach (var keyword in completionKeywords)
+        {
+            if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Course is complete: found keyword '{Keyword}'", keyword);
+                return true;
+            }
+        }
+
+        // If we found a percentage that's not 100%, treat as incomplete
+        // If no percentage or completion keyword found, assume incomplete (to be safe and process it)
+        return false;
     }
 }
